@@ -291,14 +291,21 @@ def get_certificate():
         
         client_id = data['client_id']
         
+        print(f"\n🔍 Certificate Lookup Request:")
+        print(f"   Looking for: {client_id}")
+        print(f"   Registered clients: {[cert['subject'] for cert in certificates_db.values()]}")
+        print(f"   Total certificates: {len(certificates_db)}")
+        
         # Find certificate for this client
         for cert_id, cert in certificates_db.items():
             if cert['subject'] == client_id:
+                print(f"   ✅ FOUND certificate for {client_id}")
                 return jsonify({
                     'status': 'success',
                     'certificate': cert
                 })
         
+        print(f"   ❌ NOT FOUND: {client_id}")
         return jsonify({
             'status': 'error',
             'message': f'No certificate found for client: {client_id}'
