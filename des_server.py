@@ -429,9 +429,12 @@ def send_secure_message():
         
         # STEP 2: Extract receiver's public key from certificate
         receiver_public_key_pem = receiver_cert['public_key']
+        print(f"\n🔑 Receiver's Public Key (first 100 chars):")
+        print(f"   {receiver_public_key_pem[:100]}...")
         
         # STEP 3: Generate random DES session key
         des_key = generate_random_key()
+        print(f"\n🎲 Generated DES Session Key: {des_key}")
         
         # STEP 4: Encrypt message with DES
         original_length = len(plaintext)
@@ -444,7 +447,10 @@ def send_secure_message():
             encrypted_blocks.append(cipher_block)
         
         # STEP 5: Encrypt DES key with receiver's RSA public key
+        print(f"\n🔐 Encrypting session key with receiver's public key...")
         encrypted_des_key = encrypt_with_public_key(des_key, receiver_public_key_pem)
+        print(f"   ✅ Session key encrypted (length: {len(encrypted_des_key)} chars)")
+
         
         # STEP 6: Generate message ID
         message_id = str(uuid.uuid4())[:12]
@@ -460,6 +466,14 @@ def send_secure_message():
             'sender_certificate': sender_cert,
             'receiver_certificate': receiver_cert
         }
+        
+        print(f"\n{'='*60}")
+        print(f"📤 SEND MESSAGE - Message ID: {message_id}")
+        print(f"{'='*60}")
+        print(f"   • From: {sender_cert['subject']}")
+        print(f"   • To: {receiver_cert['subject']}")
+        print(f"   • Message Length: {original_length} chars")
+        print(f"{'='*60}\n")
         
         ciphertext = ''.join(encrypted_blocks)
         
@@ -541,22 +555,56 @@ def receive_secure_message():
             }), 400
         
         # STEP 3: Verify receiver is the intended recipient
+        print(f"\n{'='*60}")
+        print(f"🔍 RECEIVE MESSAGE DEBUG - Message ID: {message_id}")
+        print(f"{'='*60}")
+        print(f"📨 Message Info:")
+        print(f"   • Sender: {msg['sender']}")
+        print(f"   • Intended Receiver: {msg['receiver']}")
+        print(f"   • Timestamp: {msg['timestamp']}")
+        print(f"\n👤 Your Certificate:")
+        print(f"   • Subject: {receiver_cert['subject']}")
+        print(f"\n🔐 Validation:")
+        print(f"   • Match: {receiver_cert['subject'] == msg['receiver']}")
+        
         if receiver_cert['subject'] != msg['receiver']:
+            print(f"   ❌ FAILED: You are '{receiver_cert['subject']}', message is for '{msg['receiver']}'")
+            print(f"{'='*60}\n")
             return jsonify({
                 'status': 'error',
-                'message': 'You are not the intended receiver of this message'
+                'message': f"Access denied. This message is for '{msg['receiver']}', but your certificate shows '{receiver_cert['subject']}'"
             }), 403
         
+        print(f"   ✅ PASSED: You are the intended receiver")
+        print(f"{'='*60}\n")
+        
         # STEP 4: Decrypt DES session key with receiver's private key
+        print(f"🔑 STEP 4: Decrypting DES Session Key...")
         try:
             receiver_private_key = RSA.import_key(receiver_private_key_pem)
+            print(f"   ✅ Private key loaded successfully")
+            print(f"   • Key size: {receiver_private_key.size_in_bits()} bits")
+            
             cipher = PKCS1_OAEP.new(receiver_private_key)
             encrypted_key_bytes = base64.b64decode(msg['encrypted_key'])
+            print(f"   • Encrypted key size: {len(encrypted_key_bytes)} bytes")
+            
             des_key = cipher.decrypt(encrypted_key_bytes).decode('utf-8')
+            print(f"   ✅ Session key decrypted successfully")
+            print(f"   • DES Key: {des_key[:8]}...{des_key[-8:]}")
         except Exception as e:
+            print(f"   ❌ DECRYPTION FAILED!")
+            print(f"   • Error type: {type(e).__name__}")
+            print(f"   • Error message: {str(e)}")
+            print(f"\n💡 DIAGNOSIS:")
+            print(f"   This usually means:")
+            print(f"   1. Private key doesn't match the public key used for encryption")
+            print(f"   2. Private key is corrupted or wrong format")
+            print(f"   3. Message was encrypted for a different receiver")
             return jsonify({
                 'status': 'error',
-                'message': 'Failed to decrypt session key. Wrong private key?'
+                'message': f'Failed to decrypt session key: {str(e)}',
+                'hint': 'Make sure you are using the SAME private key that matches your certificate'
             }), 403
         
         # STEP 5: Decrypt message with recovered DES key

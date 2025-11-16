@@ -9,6 +9,7 @@ Secure messaging client using Public Key Infrastructure:
 
 import requests
 import json
+import os
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 import base64
@@ -22,17 +23,69 @@ class PKIClient:
         self.public_key = None
         self.certificate = None
         self.ca_public_key = None
+        self.key_file = f"{client_id}_private_key.pem"
+        self.cert_file = f"{client_id}_certificate.json"
+        
+    def save_keys_and_cert(self):
+        """Save private key and certificate to files"""
+        try:
+            # Save private key
+            with open(self.key_file, 'wb') as f:
+                f.write(self.private_key.export_key())
+            
+            # Save certificate
+            with open(self.cert_file, 'w') as f:
+                json.dump(self.certificate, f, indent=2)
+            
+            print(f"💾 Keys and certificate saved to:")
+            print(f"   - {self.key_file}")
+            print(f"   - {self.cert_file}")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not save keys: {e}")
+    
+    def load_keys_and_cert(self):
+        """Load existing private key and certificate from files"""
+        try:
+            if os.path.exists(self.key_file) and os.path.exists(self.cert_file):
+                # Load private key
+                with open(self.key_file, 'rb') as f:
+                    self.private_key = RSA.import_key(f.read())
+                self.public_key = self.private_key.publickey()
+                
+                # Load certificate
+                with open(self.cert_file, 'r') as f:
+                    self.certificate = json.load(f)
+                
+                print(f"✅ Loaded existing keys and certificate from disk")
+                print(f"   Subject: {self.certificate['subject']}")
+                print(f"   Certificate ID: {self.certificate['certificate_id']}")
+                return True
+        except Exception as e:
+            print(f"⚠️  Could not load existing keys: {e}")
+        
+        return False
         
     def generate_keys(self):
         """Generate RSA key pair for this client"""
-        print(f"\n🔐 Generating RSA key pair for {self.client_id}...")
+        print(f"\n🔐 Generating NEW RSA key pair for {self.client_id}...")
         key = RSA.generate(2048)
         self.private_key = key
         self.public_key = key.publickey()
         print("✅ Keys generated successfully!")
         
-    def register_with_ca(self):
+    def register_with_ca(self, force_new=False):
         """Register with CA and get digital certificate"""
+        
+        # Try to load existing keys first (unless forced to create new)
+        if not force_new and self.load_keys_and_cert():
+            # Get CA public key
+            response = requests.get(f"{self.ca_url}/ca/info")
+            if response.status_code == 200:
+                self.ca_public_key = response.json()['ca_public_key']
+                print("✅ Using existing registration")
+                return True
+        
+        # Generate new keys if needed
         if not self.public_key:
             self.generate_keys()
         
@@ -60,6 +113,9 @@ class PKIClient:
             print(f"✅ Certificate issued successfully!")
             print(f"   Certificate ID: {result['certificate_id']}")
             print(f"   Valid until: {self.certificate['expires_at']}")
+            
+            # Save to disk for future use
+            self.save_keys_and_cert()
             return True
         else:
             print(f"❌ Registration failed: {response.json().get('message', 'Unknown error')}")
@@ -169,10 +225,11 @@ def main():
         print("  1. Send Secure Message")
         print("  2. Receive Secure Message")
         print("  3. View My Certificate")
-        print("  4. Exit")
+        print("  4. Re-register (Generate New Keys)")
+        print("  5. Exit")
         print("=" * 60)
         
-        choice = input("\nChoose option (1/2/3/4): ").strip()
+        choice = input("\nChoose option (1/2/3/4/5): ").strip()
         
         if choice == '1':
             # SEND MESSAGE
@@ -222,6 +279,16 @@ def main():
                 print("No certificate available")
         
         elif choice == '4':
+            # RE-REGISTER (Generate new keys)
+            print("\n⚠️  WARNING: This will generate NEW keys and invalidate old messages!")
+            confirm = input("Are you sure? (yes/no): ").strip().lower()
+            if confirm == 'yes':
+                if client.register_with_ca(force_new=True):
+                    print("✅ Re-registered successfully with new keys!")
+                else:
+                    print("❌ Re-registration failed!")
+        
+        elif choice == '5':
             print("\n👋 Goodbye!")
             break
         else:
