@@ -348,6 +348,7 @@ See `LOCALTUNNEL_SETUP.md` for detailed setup instructions.
 ## 👨‍💻 Author
 
 **Ahmad Tsaqif**  
+**Gilang Gunawan**  
 Keamanan Informasi - Tugas 3  
 Implementation Date: November 2025
 
