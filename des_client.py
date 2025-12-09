@@ -10,9 +10,8 @@ Secure messaging client using Public Key Infrastructure:
 import requests
 import json
 import os
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP
 import base64
+import random
 
 class PKIClient:
     def __init__(self, client_id, ca_url, des_server_url):
@@ -23,61 +22,54 @@ class PKIClient:
         self.public_key = None
         self.certificate = None
         self.ca_public_key = None
-        self.key_file = f"{client_id}_private_key.pem"
         self.cert_file = f"{client_id}_certificate.json"
         
-    def save_keys_and_cert(self):
-        """Save private key and certificate to files"""
+    def save_cert(self):
+        """Save certificate to file"""
         try:
-            # Save private key
-            with open(self.key_file, 'wb') as f:
-                f.write(self.private_key.export_key())
-            
             # Save certificate
             with open(self.cert_file, 'w') as f:
                 json.dump(self.certificate, f, indent=2)
             
-            print(f"💾 Keys and certificate saved to:")
-            print(f"   - {self.key_file}")
-            print(f"   - {self.cert_file}")
+            print(f"💾 Certificate saved to: {self.cert_file}")
         except Exception as e:
-            print(f"⚠️  Warning: Could not save keys: {e}")
+            print(f"⚠️  Warning: Could not save certificate: {e}")
     
-    def load_keys_and_cert(self):
-        """Load existing private key and certificate from files"""
+    def load_cert(self):
+        """Load existing certificate from file"""
         try:
-            if os.path.exists(self.key_file) and os.path.exists(self.cert_file):
-                # Load private key
-                with open(self.key_file, 'rb') as f:
-                    self.private_key = RSA.import_key(f.read())
-                self.public_key = self.private_key.publickey()
-                
+            if os.path.exists(self.cert_file):
                 # Load certificate
                 with open(self.cert_file, 'r') as f:
                     self.certificate = json.load(f)
                 
-                print(f"✅ Loaded existing keys and certificate from disk")
+                # Extract keys from certificate
+                self.public_key = self.certificate.get('public_key', '')
+                self.private_key = self.certificate.get('private_key', '')
+                
+                print(f"✅ Loaded existing certificate from disk")
                 print(f"   Subject: {self.certificate['subject']}")
                 print(f"   Certificate ID: {self.certificate['certificate_id']}")
                 return True
         except Exception as e:
-            print(f"⚠️  Could not load existing keys: {e}")
+            print(f"⚠️  Could not load existing certificate: {e}")
         
         return False
         
     def generate_keys(self):
-        """Generate RSA key pair for this client"""
-        print(f"\n🔐 Generating NEW RSA key pair for {self.client_id}...")
-        key = RSA.generate(2048)
-        self.private_key = key
-        self.public_key = key.publickey()
+        """Generate simple key pair (base64 encoded random strings)"""
+        print(f"\n🔐 Generating NEW key pair for {self.client_id}...")
+        # Generate random keys (simplified - just random strings)
+        random_bytes = bytes([random.randint(0, 255) for _ in range(32)])
+        self.private_key = base64.b64encode(random_bytes).decode('utf-8')
+        self.public_key = base64.b64encode(random_bytes[:16]).decode('utf-8')
         print("✅ Keys generated successfully!")
         
     def register_with_ca(self, force_new=False):
         """Register with CA and get digital certificate"""
         
-        # Try to load existing keys first (unless forced to create new)
-        if not force_new and self.load_keys_and_cert():
+        # Try to load existing certificate first (unless forced to create new)
+        if not force_new and self.load_cert():
             # Get CA public key
             response = requests.get(f"{self.ca_url}/ca/info")
             if response.status_code == 200:
@@ -102,7 +94,7 @@ class PKIClient:
         # Register and get certificate
         data = {
             'client_id': self.client_id,
-            'public_key': self.public_key.export_key().decode('utf-8')
+            'public_key': self.public_key
         }
         
         response = requests.post(f"{self.ca_url}/ca/register", json=data)
@@ -110,12 +102,14 @@ class PKIClient:
         if response.status_code == 200:
             result = response.json()
             self.certificate = result['certificate']
+            # Store private key in certificate for later use
+            self.certificate['private_key'] = self.private_key
             print(f"✅ Certificate issued successfully!")
             print(f"   Certificate ID: {result['certificate_id']}")
             print(f"   Valid until: {self.certificate['expires_at']}")
             
             # Save to disk for future use
-            self.save_keys_and_cert()
+            self.save_cert()
             return True
         else:
             print(f"❌ Registration failed: {response.json().get('message', 'Unknown error')}")
@@ -175,7 +169,7 @@ class PKIClient:
         
         data = {
             'message_id': message_id,
-            'private_key': self.private_key.export_key().decode('utf-8'),
+            'private_key': self.private_key,
             'certificate': self.certificate,
             'ca_public_key': self.ca_public_key
         }
@@ -245,7 +239,7 @@ def main():
                 print(f"Receiver: {result['receiver']}")
                 print(f"\n🔐 Security Info:")
                 print(f"   - Message encrypted with DES")
-                print(f"   - Session key encrypted with receiver's RSA public key")
+                print(f"   - Session key encoded with base64")
                 print(f"   - Your identity verified via CA certificate")
                 print(f"\nShare this Message ID with {receiver_id}: {result['message_id']}")
         
@@ -262,7 +256,7 @@ def main():
                 print(f"Message: {result['plaintext']}")
                 print(f"Sent: {result['timestamp']}")
                 print(f"\n🔐 Security Info:")
-                print(f"   - Session key decrypted with your RSA private key")
+                print(f"   - Session key decoded with base64")
                 print(f"   - Message decrypted with recovered DES key")
                 print(f"   - Sender verified via CA certificate")
         
