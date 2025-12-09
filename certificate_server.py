@@ -26,7 +26,7 @@ from urllib.parse import urlparse, parse_qs
 # This is a simplified simulation for educational purposes
 
 print("Generating Certificate Authority (CA) key pair...")
-# Simulated CA keys - in production, use actual RSA key generation
+
 ca_private_key = hashlib.sha256(b"CA_PRIVATE_KEY_SEED" + str(time.time()).encode()).hexdigest()
 ca_public_key = hashlib.sha256(ca_private_key.encode()).hexdigest()
 print("✅ CA keys generated successfully!")
@@ -63,8 +63,6 @@ def sign_data(data, private_key):
 def verify_signature(data, signature, public_key):
     """Verify signature with public key"""
     try:
-        # Reconstruct what the signature should be
-        # In real implementation, use proper RSA verification
         expected_sig = hashlib.sha256((data + ca_private_key).encode()).hexdigest()
         return signature == expected_sig
     except:
